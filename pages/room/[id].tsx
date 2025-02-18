@@ -80,6 +80,8 @@ export default function Room({ userName, roomName }: Props) {
       if (pusherRef.current) pusherRef.current.unsubscribe(`presence-${roomName}`);
     };
   }, [userName, roomName]);
+  
+  const myId = channelRef.current?.members.me.id || '';
 
   const handleRoomJoined = () => {
     navigator.mediaDevices
@@ -93,8 +95,8 @@ export default function Room({ userName, roomName }: Props) {
         userVideo.current!.onloadedmetadata = () => {
           userVideo.current!.play();
         };
-        if (!host.current) {
-          channelRef.current!.trigger('client-ready', { from: userName });
+        if (!host.current && myId) {
+          channelRef.current!.trigger('client-ready', { from: myId });
         }
       })
       .catch((err) => {
@@ -111,23 +113,23 @@ export default function Room({ userName, roomName }: Props) {
     return connection;
   };
 
-  const initiateCall = (memberId: string) => {
-    const connection = createPeerConnection(memberId);
+  const initiateCall = (peerId: string) => {
+    const connection = createPeerConnection(peerId);
     userStream.current?.getTracks().forEach((track) => {
       connection.addTrack(track, userStream.current!);
     });
     connection.createOffer()
       .then((offer) => {
         connection.setLocalDescription(offer);
-        channelRef.current?.trigger('client-offer', { sdp: offer, from: userName, to: memberId });
+        channelRef.current?.trigger('client-offer', { sdp: offer, from: myId, to: peerId });
       })
       .catch((error) => {
         console.log(error);
       });
   };
 
-  const handleReceivedOffer = (offer: RTCSessionDescriptionInit, memberId: string) => {
-    const connection = createPeerConnection(memberId);
+  const handleReceivedOffer = (offer: RTCSessionDescriptionInit, peerId: string) => {
+    const connection = createPeerConnection(peerId);
     userStream.current?.getTracks().forEach((track) => {
       connection.addTrack(track, userStream.current!);
     });
@@ -135,28 +137,28 @@ export default function Room({ userName, roomName }: Props) {
     connection.createAnswer()
       .then((answer) => {
         connection.setLocalDescription(answer);
-        channelRef.current?.trigger('client-answer', { sdp: answer, from: userName, to: memberId });
+        channelRef.current?.trigger('client-answer', { sdp: answer, from: myId, to: peerId });
       })
       .catch((error) => {
         console.log(error);
       });
   };
 
-  const handleAnswerReceived = (answer: RTCSessionDescriptionInit, memberId: string) => {
-    const connection = rtcConnections.current[memberId];
+  const handleAnswerReceived = (answer: RTCSessionDescriptionInit, peerId: string) => {
+    const connection = rtcConnections.current[peerId];
     connection.setRemoteDescription(answer)
       .catch((error) => console.log(error));
   };
 
-  const handleICECandidateEvent = (event: RTCPeerConnectionIceEvent, memberId: string) => {
+  const handleICECandidateEvent = (event: RTCPeerConnectionIceEvent, peerId: string) => {
     if (event.candidate) {
-      channelRef.current?.trigger('client-ice-candidate', { candidate: event.candidate, from: userName, to: memberId });
+      channelRef.current?.trigger('client-ice-candidate', { candidate: event.candidate, from: myId, to: peerId });
     }
   };
 
-  const handleNewIceCandidateMsg = (incoming: RTCIceCandidate, memberId: string) => {
+  const handleNewIceCandidateMsg = (incoming: RTCIceCandidate, peerId: string) => {
     const candidate = new RTCIceCandidate(incoming);
-    const connection = rtcConnections.current[memberId];
+    const connection = rtcConnections.current[peerId];
     connection.addIceCandidate(candidate)
       .catch((error) => console.log(error));
   };
@@ -225,8 +227,8 @@ export default function Room({ userName, roomName }: Props) {
           </button>
         </div>
       </div>
-      {Object.entries(partnerVideos).map(([memberId, stream]) => (
-        <div key={memberId} className={styles['video-container']}>
+      {Object.entries(partnerVideos).map(([peerId, stream]) => (
+        <div key={peerId} className={styles['video-container']}>
           <video autoPlay ref={(video) => { if (video) video.srcObject = stream; }} />
         </div>
       ))}
