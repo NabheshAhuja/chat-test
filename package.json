@@ -1,0 +1,30 @@
+{
+  "name": "next-webrtc-socket-io",
+  "version": "1.0.0",
+  "description": "A simple video chat application using Next.js, Socket.io, and WebRTC.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "keywords": [
+    "nextjs",
+    "webrtc",
+    "socket.io",
+    "video-chat"
+  ],
+  "author": "Tauqueer Khan",
+  "license": "MIT",
+  "dependencies": {
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "eslint": "latest",
+    "eslint-config-next": "latest"
+  }
+}
