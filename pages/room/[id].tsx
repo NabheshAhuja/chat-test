@@ -35,7 +35,7 @@ export default function Room({ userName, roomName }: Props) {
   const userStream = useRef<MediaStream | null>(null);
 
   const userVideo = useRef<HTMLVideoElement>(null);
-  const [partnerVideos, setPartnerVideos] = useState<{ [key: string]: HTMLVideoElement }>({});
+  const [partnerVideos, setPartnerVideos] = useState<{ [key: string]: MediaStream }>({});
 
   useEffect(() => {
     pusherRef.current = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
@@ -56,7 +56,7 @@ export default function Room({ userName, roomName }: Props) {
       handleRoomJoined();
     });
 
-    channelRef.current.bind('pusher:member_removed', handlePeerLeaving);
+    channelRef.current.bind('pusher:member_removed', (member) => handlePeerLeaving(member.id));
     channelRef.current.bind('client-offer', (offer: { sdp: RTCSessionDescriptionInit, from: string }) => {
       if (!host.current) {
         handleReceivedOffer(offer.sdp, offer.from);
@@ -162,11 +162,7 @@ export default function Room({ userName, roomName }: Props) {
   };
 
   const handleTrackEvent = (event: RTCTrackEvent, memberId: string) => {
-    const videoElement = document.createElement('video');
-    videoElement.srcObject = event.streams[0];
-    videoElement.autoplay = true;
-    videoElement.className = styles['video-element'];
-    setPartnerVideos((prev) => ({ ...prev, [memberId]: videoElement }));
+    setPartnerVideos((prev) => ({ ...prev, [memberId]: event.streams[0] }));
   };
 
   const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {
@@ -178,11 +174,6 @@ export default function Room({ userName, roomName }: Props) {
   };
 
   const handlePeerLeaving = (memberId: string) => {
-    if (partnerVideos[memberId]?.srcObject) {
-      (partnerVideos[memberId].srcObject as MediaStream)
-        .getTracks()
-        .forEach((track) => track.stop());
-    }
     if (rtcConnections.current[memberId]) {
       rtcConnections.current[memberId].ontrack = null;
       rtcConnections.current[memberId].onicecandidate = null;
@@ -234,9 +225,9 @@ export default function Room({ userName, roomName }: Props) {
           </button>
         </div>
       </div>
-      {Object.values(partnerVideos).map((videoElement: any, index) => (
-        <div key={index} className={styles['video-container']}>
-          {videoElement}
+      {Object.entries(partnerVideos).map(([memberId, stream]) => (
+        <div key={memberId} className={styles['video-container']}>
+          <video autoPlay ref={(video) => { if (video) video.srcObject = stream; }} />
         </div>
       ))}
     </div>
