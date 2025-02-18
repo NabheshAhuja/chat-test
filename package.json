@@ -26,6 +26,7 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@types/react": "19.0.10",
     "eslint": "latest",
     "eslint-config-next": "latest"
   }
