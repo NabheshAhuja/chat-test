@@ -1,7 +1,7 @@
 import { useRouter } from 'next/router';
 import Pusher, { Members, PresenceChannel } from 'pusher-js';
 import { useEffect, useRef, useState } from 'react';
-import styles from '../../styles/Home.module.css';
+import styles from '../../styles/Room.module.css';
 
 interface Props {
   userName: string;
@@ -29,13 +29,13 @@ export default function Room({ userName, roomName }: Props) {
 
   const host = useRef(false);
   const pusherRef = useRef<Pusher | null>(null);
-  const channelRef = useRef<PresenceChannel>(null);
+  const channelRef = useRef<PresenceChannel | null>(null);
 
-  const rtcConnection = useRef<RTCPeerConnection | null>(null);
-  const userStream = useRef<MediaStream>(null);
+  const rtcConnections = useRef<{ [key: string]: RTCPeerConnection }>({});
+  const userStream = useRef<MediaStream | null>(null);
 
   const userVideo = useRef<HTMLVideoElement>(null);
-  const partnerVideo = useRef<HTMLVideoElement>(null);
+  const [partnerVideos, setPartnerVideos] = useState<{ [key: string]: HTMLVideoElement }>({});
 
   useEffect(() => {
     pusherRef.current = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
@@ -53,25 +53,28 @@ export default function Room({ userName, roomName }: Props) {
       if (members.count === 1) {
         host.current = true;
       }
-      if (members.count > 2) {
-        router.push('/');
-      }
       handleRoomJoined();
     });
 
     channelRef.current.bind('pusher:member_removed', handlePeerLeaving);
-    channelRef.current.bind('client-offer', (offer: RTCSessionDescriptionInit) => {
+    channelRef.current.bind('client-offer', (offer: { sdp: RTCSessionDescriptionInit, from: string }) => {
       if (!host.current) {
-        handleReceivedOffer(offer);
+        handleReceivedOffer(offer.sdp, offer.from);
       }
     });
-    channelRef.current.bind('client-ready', initiateCall);
-    channelRef.current.bind('client-answer', (answer: RTCSessionDescriptionInit) => {
+    channelRef.current.bind('client-ready', (data: { from: string }) => {
       if (host.current) {
-        handleAnswerReceived(answer);
+        initiateCall(data.from);
       }
     });
-    channelRef.current.bind('client-ice-candidate', handlerNewIceCandidateMsg);
+    channelRef.current.bind('client-answer', (answer: { sdp: RTCSessionDescriptionInit, from: string }) => {
+      if (host.current) {
+        handleAnswerReceived(answer.sdp, answer.from);
+      }
+    });
+    channelRef.current.bind('client-ice-candidate', (candidate: { candidate: RTCIceCandidate, from: string }) => {
+      handleNewIceCandidateMsg(candidate.candidate, candidate.from);
+    });
 
     return () => {
       if (pusherRef.current) pusherRef.current.unsubscribe(`presence-${roomName}`);
@@ -91,7 +94,7 @@ export default function Room({ userName, roomName }: Props) {
           userVideo.current!.play();
         };
         if (!host.current) {
-          channelRef.current!.trigger('client-ready', {});
+          channelRef.current!.trigger('client-ready', { from: userName });
         }
       })
       .catch((err) => {
@@ -99,66 +102,70 @@ export default function Room({ userName, roomName }: Props) {
       });
   };
 
-  const createPeerConnection = () => {
+  const createPeerConnection = (memberId: string) => {
     const connection = new RTCPeerConnection(ICE_SERVERS);
-    connection.onicecandidate = handleICECandidateEvent;
-    connection.ontrack = handleTrackEvent;
+    connection.onicecandidate = (event) => handleICECandidateEvent(event, memberId);
+    connection.ontrack = (event) => handleTrackEvent(event, memberId);
     connection.onicecandidateerror = (e) => console.log(e);
+    rtcConnections.current[memberId] = connection;
     return connection;
   };
 
-  const initiateCall = () => {
-    if (host.current) {
-      rtcConnection.current = createPeerConnection();
-      userStream.current?.getTracks().forEach((track) => {
-        rtcConnection.current?.addTrack(track, userStream.current!);
-      });
-      rtcConnection.current!.createOffer()
-        .then((offer) => {
-          rtcConnection.current!.setLocalDescription(offer);
-          channelRef.current?.trigger('client-offer', offer);
-        })
-        .catch((error) => {
-          console.log(error);
-        });
-    }
-  };
-
-  const handleReceivedOffer = (offer: RTCSessionDescriptionInit) => {
-    rtcConnection.current = createPeerConnection();
+  const initiateCall = (memberId: string) => {
+    const connection = createPeerConnection(memberId);
     userStream.current?.getTracks().forEach((track) => {
-      rtcConnection.current?.addTrack(track, userStream.current!);
+      connection.addTrack(track, userStream.current!);
     });
-    rtcConnection.current.setRemoteDescription(offer);
-    rtcConnection.current.createAnswer()
-      .then((answer) => {
-        rtcConnection.current!.setLocalDescription(answer);
-        channelRef.current?.trigger('client-answer', answer);
+    connection.createOffer()
+      .then((offer) => {
+        connection.setLocalDescription(offer);
+        channelRef.current?.trigger('client-offer', { sdp: offer, from: userName, to: memberId });
       })
       .catch((error) => {
         console.log(error);
       });
   };
 
-  const handleAnswerReceived = (answer: RTCSessionDescriptionInit) => {
-    rtcConnection.current!.setRemoteDescription(answer)
+  const handleReceivedOffer = (offer: RTCSessionDescriptionInit, memberId: string) => {
+    const connection = createPeerConnection(memberId);
+    userStream.current?.getTracks().forEach((track) => {
+      connection.addTrack(track, userStream.current!);
+    });
+    connection.setRemoteDescription(offer);
+    connection.createAnswer()
+      .then((answer) => {
+        connection.setLocalDescription(answer);
+        channelRef.current?.trigger('client-answer', { sdp: answer, from: userName, to: memberId });
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+  };
+
+  const handleAnswerReceived = (answer: RTCSessionDescriptionInit, memberId: string) => {
+    const connection = rtcConnections.current[memberId];
+    connection.setRemoteDescription(answer)
       .catch((error) => console.log(error));
   };
 
-  const handleICECandidateEvent = async (event: RTCPeerConnectionIceEvent) => {
+  const handleICECandidateEvent = (event: RTCPeerConnectionIceEvent, memberId: string) => {
     if (event.candidate) {
-      channelRef.current?.trigger('client-ice-candidate', event.candidate);
+      channelRef.current?.trigger('client-ice-candidate', { candidate: event.candidate, from: userName, to: memberId });
     }
   };
 
-  const handlerNewIceCandidateMsg = (incoming: RTCIceCandidate) => {
+  const handleNewIceCandidateMsg = (incoming: RTCIceCandidate, memberId: string) => {
     const candidate = new RTCIceCandidate(incoming);
-    rtcConnection.current!.addIceCandidate(candidate)
+    const connection = rtcConnections.current[memberId];
+    connection.addIceCandidate(candidate)
       .catch((error) => console.log(error));
   };
 
-  const handleTrackEvent = (event: RTCTrackEvent) => {
-    partnerVideo.current!.srcObject = event.streams[0];
+  const handleTrackEvent = (event: RTCTrackEvent, memberId: string) => {
+    const videoElement = document.createElement('video');
+    videoElement.srcObject = event.streams[0];
+    videoElement.autoplay = true;
+    setPartnerVideos((prev) => ({ ...prev, [memberId]: videoElement }));
   };
 
   const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {
@@ -169,19 +176,23 @@ export default function Room({ userName, roomName }: Props) {
     });
   };
 
-  const handlePeerLeaving = () => {
-    host.current = true;
-    if (partnerVideo.current?.srcObject) {
-      (partnerVideo.current.srcObject as MediaStream)
+  const handlePeerLeaving = (memberId: string) => {
+    if (partnerVideos[memberId]?.srcObject) {
+      (partnerVideos[memberId].srcObject as MediaStream)
         .getTracks()
         .forEach((track) => track.stop());
     }
-    if (rtcConnection.current) {
-      rtcConnection.current.ontrack = null;
-      rtcConnection.current.onicecandidate = null;
-      rtcConnection.current.close();
-      rtcConnection.current = null;
+    if (rtcConnections.current[memberId]) {
+      rtcConnections.current[memberId].ontrack = null;
+      rtcConnections.current[memberId].onicecandidate = null;
+      rtcConnections.current[memberId].close();
+      delete rtcConnections.current[memberId];
     }
+    setPartnerVideos((prev) => {
+      const newVideos = { ...prev };
+      delete newVideos[memberId];
+      return newVideos;
+    });
   };
 
   const leaveRoom = () => {
@@ -190,17 +201,9 @@ export default function Room({ userName, roomName }: Props) {
         .getTracks()
         .forEach((track) => track.stop());
     }
-    if (partnerVideo.current!.srcObject) {
-      (partnerVideo.current!.srcObject as MediaStream)
-        .getTracks()
-        .forEach((track) => track.stop());
-    }
-    if (rtcConnection.current) {
-      rtcConnection.current.ontrack = null;
-      rtcConnection.current.onicecandidate = null;
-      rtcConnection.current.close();
-      rtcConnection.current = null;
-    }
+    Object.keys(partnerVideos).forEach((memberId) => {
+      handlePeerLeaving(memberId);
+    });
     router.push('/');
   };
 
@@ -231,9 +234,11 @@ export default function Room({ userName, roomName }: Props) {
             </button>
           </div>
         </div>
-        <div className={styles['video-container']}>
-          <video autoPlay ref={partnerVideo} />
-        </div>
+        {Object.values(partnerVideos).map((videoElement:any, index) => (
+          <div key={index} className={styles['video-container']}>
+            {videoElement}
+          </div>
+        ))}
       </div>
     </div>
   );
