@@ -165,6 +165,7 @@ export default function Room({ userName, roomName }: Props) {
     const videoElement = document.createElement('video');
     videoElement.srcObject = event.streams[0];
     videoElement.autoplay = true;
+    videoElement.className = styles['video-element'];
     setPartnerVideos((prev) => ({ ...prev, [memberId]: videoElement }));
   };
 
@@ -218,28 +219,26 @@ export default function Room({ userName, roomName }: Props) {
   };
 
   return (
-    <div>
-      <div className={styles['videos-container']}>
-        <div className={styles['video-container']}>
-          <video autoPlay ref={userVideo} muted />
-          <div>
-            <button onClick={toggleMic} type="button">
-              {micActive ? 'Mute Mic' : 'UnMute Mic'}
-            </button>
-            <button onClick={leaveRoom} type="button">
-              Leave
-            </button>
-            <button onClick={toggleCamera} type="button">
-              {cameraActive ? 'Stop Camera' : 'Start Camera'}
-            </button>
-          </div>
+    <div className={styles['videos-container']}>
+      <div className={styles['video-container']}>
+        <video autoPlay ref={userVideo} muted />
+        <div className={styles.controls}>
+          <button onClick={toggleMic} type="button">
+            {micActive ? 'Mute Mic' : 'UnMute Mic'}
+          </button>
+          <button onClick={leaveRoom} type="button">
+            Leave
+          </button>
+          <button onClick={toggleCamera} type="button">
+            {cameraActive ? 'Stop Camera' : 'Start Camera'}
+          </button>
         </div>
-        {Object.values(partnerVideos).map((videoElement:any, index) => (
-          <div key={index} className={styles['video-container']}>
-            {videoElement}
-          </div>
-        ))}
       </div>
+      {Object.values(partnerVideos).map((videoElement: any, index) => (
+        <div key={index} className={styles['video-container']}>
+          {videoElement}
+        </div>
+      ))}
     </div>
   );
 }
