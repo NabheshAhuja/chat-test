@@ -2,13 +2,23 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
 import styles from '../styles/Home.module.css'
+import Pusher from 'pusher-js';
 
 export default function Home() {
   const router = useRouter()
   const [roomName, setRoomName] = useState('')
 
   const joinRoom = () => {
-    router.push(`/room/${roomName || Math.random().toString(36).slice(2)}`)
+    const room = roomName || Math.random().toString(36).slice(2);
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+      authEndpoint: '/api/pusher/auth',
+    });
+
+    const channel = pusher.subscribe(`presence-${room}`);
+    channel.bind('pusher:subscription_succeeded', () => {
+      router.push(`/room/${room}`);
+    });
   }
 
   return (

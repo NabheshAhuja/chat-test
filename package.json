@@ -14,10 +14,12 @@
     "socket.io",
     "video-chat"
   ],
-  "author": "Tauqueer Khan",
   "license": "MIT",
   "dependencies": {
+    "dotenv": "^16.4.7",
     "next": "latest",
+    "pusher": "^5.2.0",
+    "pusher-js": "^8.4.0",
     "react": "latest",
     "react-dom": "latest",
     "socket.io": "^4.8.1",

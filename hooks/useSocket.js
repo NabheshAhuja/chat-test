@@ -1,20 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from 'react';
+import Pusher from 'pusher-js';
 
 const useSocket = () => {
-  const socketCreated = useRef(false);
-  
   useEffect(() => {
-    if (!socketCreated.current) {
-      const socketInitializer = async () => {
-        await fetch('/api/socket');
-      };
-      try {
-        socketInitializer();
-        socketCreated.current = true;
-      } catch (error) {
-        console.log(error);
-      }
-    }
+    Pusher.logToConsole = true;
+
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+      encrypted: true,
+    });
+
+    return () => {
+      pusher.disconnect();
+    };
   }, []);
 };
 
